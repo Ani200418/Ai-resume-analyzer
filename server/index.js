@@ -93,6 +93,22 @@ app.get("/health", (req, res) => {
     environment: process.env.NODE_ENV,
   });
 });
+
+// ─── Debug Endpoint (for troubleshooting Google OAuth) ────────────────────────
+app.get("/api/debug/config", (req, res) => {
+  res.json({
+    nodeEnv: process.env.NODE_ENV,
+    port: process.env.PORT,
+    googleClientId: process.env.GOOGLE_CLIENT_ID ? process.env.GOOGLE_CLIENT_ID.substring(0, 20) + "..." : "NOT SET",
+    googleClientIdFull: process.env.GOOGLE_CLIENT_ID,
+    jwtSecretExists: !!process.env.JWT_SECRET,
+    mongodbUriExists: !!process.env.MONGODB_URI,
+    openaiKeyExists: !!process.env.OPENAI_API_KEY,
+    clientUrl: process.env.CLIENT_URL,
+    timestamp: new Date().toISOString(),
+  });
+});
+
 app.get("/", (req, res) => {
   res.json({
     success: true,

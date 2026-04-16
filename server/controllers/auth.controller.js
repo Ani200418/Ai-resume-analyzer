@@ -155,7 +155,10 @@ const googleAuth = async (req, res, next) => {
     console.error("❌ Google Auth Error:");
     console.error("   Message:", error.message);
     console.error("   Type:", error.constructor.name);
+    console.error("   Full Error:", JSON.stringify(error, null, 2));
     console.error("   Stack:", error.stack);
+    console.error("   Env GOOGLE_CLIENT_ID:", process.env.GOOGLE_CLIENT_ID);
+    console.error("   Env JWT_SECRET exists:", !!process.env.JWT_SECRET);
     
     if (error.message?.includes("Token used too late")) {
       return next(new AppError("Google token expired, please try again", 401));
@@ -176,6 +179,8 @@ const googleAuth = async (req, res, next) => {
       return next(new AppError("Invalid Google client configuration", 400));
     }
     
+    // Catch-all for any other error
+    console.error("   ⚠️  Unhandled error type");
     next(error);
   }
 };
