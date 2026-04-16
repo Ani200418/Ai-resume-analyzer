@@ -55,11 +55,8 @@ export default function ResumePage() {
     if (targetJobTitle) formData.append("targetJobTitle", targetJobTitle);
 
     try {
-      const { data } = await resumeAPI.upload(formData, setUploadProgress);
-      toast.success("Resume uploaded successfully!");
-      setResumes((prev) => [data.resume, ...prev]);
-      // Auto-analyze
-      await handleAnalyze(data.resume.id || data.resume._id);
+      const response: any = await resumeAPI.upload(formData, setUploadProgress);
+const data = response.data;
     } catch (err: unknown) {
       const e = err as { response?: { data?: { error?: string } }; message?: string };
       const msg = e?.response?.data?.error || e?.message || "Upload failed. Check the browser console for details.";
