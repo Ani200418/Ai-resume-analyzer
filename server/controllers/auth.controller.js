@@ -12,7 +12,7 @@ const { AppError } = require("../middlewares/error.middleware");
 if (!process.env.GOOGLE_CLIENT_ID) {
   console.error("❌ GOOGLE_CLIENT_ID is not set in environment variables!");
 } else {
-  console.log("✅ Google OAuth configured with Client ID:", process.env.GOOGLE_CLIENT_ID.substring(0, 15) + "...");
+ 
 }
 
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
@@ -108,11 +108,7 @@ const googleAuth = async (req, res, next) => {
       throw new AppError("Google credential is required", 400);
     }
 
-    // Verify Google ID token
-    console.log("🔐 Google Auth - Verifying token...");
-    console.log("   Client ID:", process.env.GOOGLE_CLIENT_ID);
-    console.log("   Token length:", credential.length);
-    console.log("   Token preview:", credential.substring(0, 50) + "...");
+   
     
     const ticket = await googleClient.verifyIdToken({
       idToken: credential,

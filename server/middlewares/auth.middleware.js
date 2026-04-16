@@ -44,7 +44,7 @@ const protect = async (req, res, next) => {
 
     // Attach user to request
     req.user = user;
-    console.log("✅ Auth successful for user:", user.email, "Route:", req.method, req.path);
+    
     next();
   } catch (error) {
     next(error);
