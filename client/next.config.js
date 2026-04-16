@@ -13,15 +13,7 @@ const nextConfig = {
   async rewrites() {
     const backendUrl = process.env.BACKEND_URL || "http://localhost:5001";
     return {
-      beforeFiles: [
-        // ✅ Multipart/form-data requests must NOT go through rewrites
-        // They must be proxied directly via API routes instead
-        {
-          source: "/api/resume/upload",
-          destination: `${backendUrl}/api/resume/upload`,
-          // Rewrites don't properly handle multipart - use API route instead
-        },
-      ],
+      // Multipart requests shouldn't use rewrites, letting them hit Next.js API proxy route.
       afterFiles: [
         {
           source: "/api/:path*",

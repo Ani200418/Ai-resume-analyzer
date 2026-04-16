@@ -23,16 +23,19 @@ export async function POST(request: NextRequest) {
 
     const backendUrl = process.env.BACKEND_URL || "http://localhost:5001";
     
+    const contentType = request.headers.get("content-type");
+
     // ✅ Forward the entire request body (FormData) as-is
     // This preserves the multipart/form-data encoding
     const response = await fetch(`${backendUrl}/api/resume/upload`, {
       method: "POST",
       headers: {
         "Authorization": token,
-        // ✅ IMPORTANT: Do NOT set Content-Type header
-        // Let fetch automatically detect and set it with the proper boundary
+        ...(contentType ? { "Content-Type": contentType } : {}),
       },
       body: request.body,
+      // @ts-ignore
+      duplex: "half", // Needed in Node.js 18+ fetch when body is a stream
     });
 
     const data = await response.json();
