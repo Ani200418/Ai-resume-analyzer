@@ -25,8 +25,8 @@ A full-stack web application that analyzes resumes, matches them with job opport
 ### Core Features
 - **Google OAuth 2.0 Authentication** - Secure login with Google accounts
 - **Resume Upload & Parsing** - Upload PDF resumes with automatic text extraction
-- **AI-Powered Analysis** - Uses OpenAI to extract key information from resumes
-- **Job Matching** - Matches resume skills with available job opportunities
+- **AI-Powered Analysis** - Uses a Unified Parallel AI Engine (OpenAI, Gemini 1.5, and OpenRouter) to evaluate ATS score, skill gaps, and provide custom feedback simultaneously
+- **Real-Time Job Searching** - Fetches live external job opportunities via RapidAPI JSearch mapped directly to your parsed skill gaps
 - **Score Breakdown** - Detailed scoring with skill match analysis
 - **Interactive Dashboard** - View resume analysis, job matches, and detailed reports
 - **Skill Visualization** - Radar charts showing skill distribution
@@ -60,7 +60,8 @@ A full-stack web application that analyzes resumes, matches them with job opport
 - **Mongoose** - MongoDB ODM
 - **JWT** - Authentication tokens
 - **Google Auth Library** - OAuth verification
-- **OpenAI API** - Resume analysis and AI features
+- **Multi-Model AI Engine** - Concurrency across OpenAI (GPT-4), Gemini (1.5 Pro) and OpenRouter (Meta Llama 3)
+- **RapidAPI JSearch** - Live external job feed integration
 - **Multer** - File upload handling
 - **pdfparse** - PDF text extraction
 
@@ -213,8 +214,14 @@ JWT_EXPIRES_IN=7d
 GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=your-client-secret
 
-# OpenAI
+# Multi-Model AI Engines
 OPENAI_API_KEY=sk-your-api-key
+GEMINI_API_KEY=your_gemini_api_key
+OPENROUTER_API_KEY=your_openrouter_api_key
+
+# RapidAPI JSearch
+RAPIDAPI_KEY=your_rapidapi_key
+RAPIDAPI_HOST=jsearch.p.rapidapi.com
 
 # CORS
 CLIENT_URL=http://localhost:3000
