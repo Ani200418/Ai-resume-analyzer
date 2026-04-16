@@ -93,7 +93,12 @@ app.get("/health", (req, res) => {
     environment: process.env.NODE_ENV,
   });
 });
-
+app.get("/", (req, res) => {
+  res.json({
+    success: true,
+    message: "AI Resume Analyzer API is running 🚀",
+  });
+});
 // ─── API Routes ──────────────────────────────────────────────────────────────
 app.use("/api/auth", authRoutes);
 app.use("/api/resume", resumeRoutes);
