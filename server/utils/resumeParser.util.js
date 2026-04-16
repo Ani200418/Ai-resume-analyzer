@@ -296,4 +296,4 @@ const estimateYearsOfExperience = (text) => {
   return total > 0 && total < 50 ? total : null;
 };
 
-module.exports = { parseResumeText };
+module.exports = { parseResumeText, TECH_SKILLS, SKILL_CATEGORIES };

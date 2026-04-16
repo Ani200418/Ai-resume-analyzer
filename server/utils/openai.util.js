@@ -1,21 +1,145 @@
 /**
- * OpenAI Integration Utility
- * Handles AI-powered resume analysis using GPT-4
+ * Unified AI Integration Utility
+ * Handles AI-powered resume analysis using OpenAI, Gemini, and OpenRouter in parallel.
+ * This Domain Specialist architecture splits the task to drastically improve speed and utilize each model's strengths.
  */
 
 const OpenAI = require("openai");
 
+// ─── Client Initializations ───────────────────────────────────────────────────
+
+// OpenAI Client (For ATS Score Evaluation)
 const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
+  apiKey: process.env.OPENAI_API_KEY || "dummy",
 });
 
+// OpenRouter Client (For Professional AI Feedback - compatible with OpenAI SDK)
+const openrouter = new OpenAI({
+  baseURL: "https://openrouter.ai/api/v1",
+  apiKey: process.env.OPENROUTER_API_KEY || "dummy",
+  defaultHeaders: {
+    "HTTP-Referer": "http://localhost:3000",
+    "X-Title": "AI Resume Analyzer",
+  }
+});
+
+// ─── Domain Specialist Functions ──────────────────────────────────────────────
+
+const getAtsAnalysisFromOpenAI = async (resumeText, targetJobTitle) => {
+  const prompt = `You are an expert ATS (Applicant Tracking System) analyzer. 
+Analyze the resume for the target role: "${targetJobTitle}".
+Provide your analysis as a valid JSON object with EXACTLY this structure:
+{
+  "atsAnalysis": {
+    "score": <number 0-100, be realistic, not everyone gets 90>,
+    "grade": <"A" | "B" | "C" | "D" | "F">,
+    "formatScore": <number 0-100>,
+    "contentScore": <number 0-100>,
+    "readabilityScore": <number 0-100>,
+    "strengths": [<3-5 specific strengths>],
+    "weaknesses": [<3-5 specific weaknesses>],
+    "keywordsFound": [<8-15 important keywords found>],
+    "keywordsMissing": [<5-10 keywords missing>]
+  }
+}
+Resume:
+${resumeText.substring(0, 3500)}`;
+
+  const response = await openai.chat.completions.create({
+    model: "gpt-4o",
+    messages: [
+      { role: "system", content: "You output nothing except valid JSON." },
+      { role: "user", content: prompt }
+    ],
+    temperature: 0.2,
+    response_format: { type: "json_object" },
+  });
+  
+  const content = JSON.parse(response.choices[0].message.content);
+  return content.atsAnalysis || content; 
+};
+
+const getSkillGapFromGemini = async (resumeText, parsedSkills, targetJobTitle) => {
+  const prompt = `You are an expert technical career coach. 
+Analyze the resume and skills against the target role: "${targetJobTitle}".
+Current Skills Detected: ${parsedSkills}
+Provide your analysis as a valid JSON object with EXACTLY this structure:
+{
+  "skillGap": {
+    "targetRole": "${targetJobTitle}",
+    "presentSkills": [<skills present from resume>],
+    "missingSkills": [<8-12 skills missing for the role>],
+    "prioritySkills": [<top 5 skills to learn first>],
+    "recommendations": [<4-6 specific actionable recommendations>]
+  }
+}
+Resume:
+${resumeText.substring(0, 3500)}`;
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro-latest:generateContent?key=${process.env.GEMINI_API_KEY}`;
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: { 
+        responseMimeType: "application/json", 
+        temperature: 0.2 
+      }
+    })
+  });
+  
+  if (!response.ok) {
+    throw new Error(`Gemini API failed: ${response.status} ${await response.text()}`);
+  }
+  
+  const data = await response.json();
+  const textContent = data.candidates[0].content.parts[0].text;
+  const content = JSON.parse(textContent);
+  return content.skillGap || content;
+};
+
+const getAiFeedbackFromOpenRouter = async (resumeText, targetJobTitle) => {
+  const prompt = `You are an expert career advisor.
+Analyze the resume for the target role: "${targetJobTitle}".
+Provide your analysis as a valid JSON object with EXACTLY this structure:
+{
+  "aiFeedback": {
+    "summary": <2-3 sentence executive summary>,
+    "detailedFeedback": <3-4 sentence detailed feedback>,
+    "improvementSuggestions": [<5-7 actionable suggestions>],
+    "keywordOptimization": [<5-8 keyword suggestions>],
+    "industryAlignment": <1-2 sentences about industry fit>,
+    "careerLevel": <"entry" | "mid" | "senior" | "executive">
+  }
+}
+Resume:
+${resumeText.substring(0, 3500)}`;
+
+  const response = await openrouter.chat.completions.create({
+    model: "meta-llama/llama-3-8b-instruct", // Fast and reliable OpenRouter model
+    messages: [
+      { role: "system", content: "You output nothing except valid JSON. No markdown blocks." },
+      { role: "user", content: prompt }
+    ],
+    temperature: 0.3,
+    response_format: { type: "json_object" }, 
+  });
+  
+  let contentStr = response.choices[0].message.content;
+  // Strip potential markdown wrappers just in case the model ignored response_format
+  contentStr = contentStr.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim();
+  
+  const content = JSON.parse(contentStr);
+  return content.aiFeedback || content;
+};
+
+// ─── Parallel Orchestration ───────────────────────────────────────────────────
+
 /**
- * Analyze resume content using OpenAI GPT
- * Returns structured analysis: ATS score, skill gaps, and detailed feedback
+ * Analyze resume content using OpenAI, Gemini, and OpenRouter in parallel
  */
 const analyzeResumeWithAI = async ({ resumeText, parsedData, targetJobTitle }) => {
-  // ⚠️ FALLBACK: If OpenAI API quota is exceeded, return mock analysis
-  // This allows testing without consuming API quota
   const USE_MOCK_ANALYSIS = process.env.USE_MOCK_ANALYSIS === "true" || false;
   
   if (USE_MOCK_ANALYSIS) {
@@ -24,119 +148,40 @@ const analyzeResumeWithAI = async ({ resumeText, parsedData, targetJobTitle }) =
   }
 
   const skillsList = parsedData?.skills?.map((s) => s.name).join(", ") || "Not detected";
-  const experienceList = parsedData?.experience
-    ?.map((e) => `${e.title} at ${e.company} (${e.duration})`)
-    .join("; ") || "Not detected";
+  const target = targetJobTitle || "General Industry Professional";
 
-  const prompt = `You are an expert ATS (Applicant Tracking System) analyzer and career coach with 15+ years of experience in HR and recruitment. Analyze the following resume and provide a detailed, structured assessment.
+  // Pre-generate fallback mock data in case a single API fails (so we don't crash the whole analysis)
+  const mockFallback = generateMockAnalysis(parsedData, target);
 
-## Resume Content:
-\`\`\`
-${resumeText.substring(0, 4000)}
-\`\`\`
+  console.log("🚀 Firing Parallel AI Requests (OpenAI, Gemini, OpenRouter)...");
 
-## Parsed Data Summary:
-- Skills: ${skillsList}
-- Experience: ${experienceList}
-- Target Job Title: ${targetJobTitle || "Not specified (analyze for general industry fit)"}
+  // Fire all 3 APIs simultaneously!
+  const [atsAnalysis, skillGap, aiFeedback] = await Promise.all([
+    getAtsAnalysisFromOpenAI(resumeText, target).catch((e) => {
+      console.error("❌ OpenAI ATS Analysis Failed:", e.message);
+      return mockFallback.atsAnalysis;
+    }),
+    getSkillGapFromGemini(resumeText, skillsList, target).catch((e) => {
+      console.error("❌ Gemini Skill Gap Failed:", e.message);
+      return mockFallback.skillGap;
+    }),
+    getAiFeedbackFromOpenRouter(resumeText, target).catch((e) => {
+      console.error("❌ OpenRouter AI Feedback Failed:", e.message);
+      return mockFallback.aiFeedback;
+    })
+  ]);
 
-## Required Analysis:
+  console.log("✅ Parallel AI Requests Completed!");
 
-Provide your analysis as a valid JSON object with EXACTLY this structure:
-
-{
-  "atsAnalysis": {
-    "score": <number 0-100, be realistic and precise>,
-    "grade": <"A" | "B" | "C" | "D" | "F">,
-    "formatScore": <number 0-100>,
-    "contentScore": <number 0-100>,
-    "readabilityScore": <number 0-100>,
-    "strengths": [<3-5 specific strengths as strings>],
-    "weaknesses": [<3-5 specific weaknesses as strings>],
-    "keywordsFound": [<8-15 important keywords found in resume>],
-    "keywordsMissing": [<5-10 important keywords missing that ATS systems look for>]
-  },
-  "skillGap": {
-    "targetRole": <"${targetJobTitle || "determined from resume context"}"},
-    "presentSkills": [<list of skills clearly present>],
-    "missingSkills": [<8-12 skills missing for the target role>],
-    "prioritySkills": [<top 5 skills to learn first, ordered by importance>],
-    "recommendations": [<4-6 specific actionable recommendations>]
-  },
-  "aiFeedback": {
-    "summary": <2-3 sentence executive summary of the resume>,
-    "detailedFeedback": <3-4 sentence detailed professional feedback>,
-    "improvementSuggestions": [<5-7 specific, actionable improvement suggestions>],
-    "keywordOptimization": [<5-8 specific keyword optimization suggestions>],
-    "industryAlignment": <1-2 sentences about industry fit>,
-    "careerLevel": <"entry" | "mid" | "senior" | "executive">
-  }
-}
-
-IMPORTANT: 
-- Be specific and realistic. Don't give everyone a 90+ score.
-- Base suggestions on what's actually in the resume.
-- Return ONLY valid JSON, no markdown, no explanations outside the JSON.`;
-
-  try {
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o",
-      messages: [
-        {
-          role: "system",
-          content: "You are an expert ATS analyzer. Always respond with valid JSON only, no markdown code blocks, no extra text.",
-        },
-        { role: "user", content: prompt },
-      ],
-      temperature: 0.3, // Lower temperature for more consistent, structured output
-      max_tokens: 2000,
-      response_format: { type: "json_object" },
-    });
-
-    const content = response.choices[0]?.message?.content;
-    if (!content) {
-      throw new Error("Empty response from OpenAI");
-    }
-
-    // Parse JSON response
-    let analysisResult;
-    try {
-      analysisResult = JSON.parse(content);
-    } catch {
-      // Try to extract JSON from response if it's wrapped
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        analysisResult = JSON.parse(jsonMatch[0]);
-      } else {
-        throw new Error("Invalid JSON response from OpenAI");
-      }
-    }
-
-    // Validate required fields
-    if (!analysisResult.atsAnalysis || !analysisResult.skillGap || !analysisResult.aiFeedback) {
-      throw new Error("Incomplete analysis response from OpenAI");
-    }
-
-    // Ensure score is within bounds
-    analysisResult.atsAnalysis.score = Math.min(100, Math.max(0, analysisResult.atsAnalysis.score));
-
-    return analysisResult;
-
-  } catch (error) {
-    // ⚠️ If OpenAI quota exceeded, use mock analysis instead
-    if (error.code === "insufficient_quota" || error.message?.includes("quota")) {
-      console.log("⚠️  OpenAI quota exceeded, falling back to mock analysis...");
-      return generateMockAnalysis(parsedData, targetJobTitle);
-    }
-    if (error.code === "invalid_api_key") {
-      throw new Error("Invalid OpenAI API key. Please check configuration.");
-    }
-    throw new Error(`AI analysis failed: ${error.message}`);
-  }
+  return {
+    atsAnalysis,
+    skillGap,
+    aiFeedback
+  };
 };
 
 /**
- * Generate mock analysis for testing (when OpenAI quota is exceeded)
+ * Generate mock analysis for testing (when quotas are exceeded)
  */
 const generateMockAnalysis = (parsedData, targetJobTitle) => {
   const hasSkills = parsedData?.skills?.length > 0;
@@ -154,27 +199,13 @@ const generateMockAnalysis = (parsedData, targetJobTitle) => {
         "Clear contact information and professional summary",
         hasSkills ? "Technical skills well organized and listed" : "Professional profile structure",
         hasExperience ? "Relevant work experience documented" : "Educational background provided",
-        "Clean formatting and readability",
-        "Good use of industry keywords",
       ],
       weaknesses: [
         !hasExperience ? "Limited work experience or experience not detailed" : "Could add more quantifiable achievements",
-        !hasSkills ? "Technical skills section could be more detailed" : "Missing some trending technologies",
-        "Action verbs could be stronger in job descriptions",
-        "Could include more metrics and results",
-        "Missing certifications or additional qualifications",
+        !hasSkills ? "Technical skills section could be more detailed" : "Action verbs could be stronger in job descriptions",
       ],
       keywordsFound: skills.slice(0, 10),
-      keywordsMissing: [
-        "project management",
-        "cloud infrastructure",
-        "data analysis",
-        "agile methodology",
-        "system design",
-        "code review",
-        "documentation",
-        "cross-functional collaboration",
-      ],
+      keywordsMissing: ["project management", "data analysis", "agile methodology"],
     },
     skillGap: {
       targetRole: targetJobTitle || "General Tech Professional",
@@ -183,52 +214,26 @@ const generateMockAnalysis = (parsedData, targetJobTitle) => {
         "Advanced system design patterns",
         "Cloud platform expertise (AWS/Azure/GCP)",
         "Container orchestration",
-        "Advanced SQL optimization",
-        "Machine learning fundamentals",
-        "DevOps practices",
-        "Microservices architecture",
-        "Performance optimization",
       ],
-      prioritySkills: [
-        "System Design",
-        "Cloud Platforms",
-        "Advanced SQL",
-        "DevOps",
-        "Architecture Patterns",
-      ],
+      prioritySkills: ["System Design", "Cloud Platforms", "Advanced SQL"],
       recommendations: [
         "Add quantifiable achievements to each role (increased efficiency by X%, reduced costs by Y%)",
-        "Include more technical projects or side projects with tangible results",
         "Update resume with latest technology trends relevant to your field",
-        "Add a 'Certifications' section if you have any relevant credentials",
-        "Consider adding a 'Languages' section if multilingual",
-        "Highlight any leadership or mentoring experience",
       ],
     },
     aiFeedback: {
-      summary: `${hasExperience ? "Experienced professional" : "Promising candidate"} with ${skills.length > 0 ? "solid technical skills" : "foundational knowledge"} and clear career progression. ${targetJobTitle ? `Well-suited for ${targetJobTitle} roles.` : "Good general profile."}`,
-      detailedFeedback:
-        "Your resume demonstrates a structured approach to presenting your background. The formatting is clean and professional. To strengthen your candidacy, focus on adding more quantifiable results and achievements in your role descriptions. Incorporate industry-specific keywords and technologies relevant to your target positions.",
+      summary: `${hasExperience ? "Experienced professional" : "Promising candidate"} with ${skills.length > 0 ? "solid technical skills" : "foundational knowledge"}.`,
+      detailedFeedback: "Your resume demonstrates a structured approach to presenting your background. Focus on adding more quantifiable results.",
       improvementSuggestions: [
-        "Replace generic job descriptions with achievement-focused bullet points (use 'increased', 'reduced', 'improved', 'optimized')",
-        "Add specific metrics: ROI improvements, efficiency gains, cost reductions, or performance improvements",
-        "Include a 'Projects' section highlighting significant technical accomplishments",
-        "Update technology stack to include recent tools and frameworks you've learned",
-        "Add certifications or continuous learning achievements",
-        "Include quantifiable impact of your contributions to previous roles",
-        "Tailor each resume submission to highlight relevant experience for the target role",
+        "Replace generic job descriptions with achievement-focused bullet points",
+        "Add specific metrics: ROI improvements, efficiency gains, cost reductions",
       ],
       keywordOptimization: [
-        "Add specific frameworks and tools you've used (React, Node.js, etc.)",
-        "Include industry buzzwords: 'scalable', 'high-performance', 'full-stack', 'modern development'",
-        "Mention methodologies: 'agile', 'scrum', 'CI/CD', 'automated testing'",
-        "Add cloud platform references: 'AWS', 'Azure', 'GCP' if applicable",
-        "Include metrics-focused language: 'increased', 'optimized', 'improved', 'reduced'",
-        "Mention leadership/collaboration: 'cross-functional teams', 'mentoring', 'code reviews'",
-        "Include 'API design', 'microservices', 'system architecture' if relevant to your role",
+        "Include industry buzzwords: 'scalable', 'high-performance', 'full-stack'",
+        "Mention methodologies: 'agile', 'scrum', 'CI/CD'",
       ],
-      industryAlignment: `Your background aligns well with the tech industry. Focus on highlighting modern development practices and technologies to improve alignment with current job market demands. ${targetJobTitle ? `Your profile matches well with ${targetJobTitle} requirements.` : ""}`,
-      careerLevel: hasExperience ? (parsedData?.totalYearsExperience > 5 ? "senior" : "mid") : "entry",
+      industryAlignment: `Your background aligns well with the tech industry.`,
+      careerLevel: hasExperience ? "mid" : "entry",
     },
   };
 };
