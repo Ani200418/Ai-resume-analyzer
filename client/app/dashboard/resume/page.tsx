@@ -55,8 +55,9 @@ export default function ResumePage() {
     if (targetJobTitle) formData.append("targetJobTitle", targetJobTitle);
 
     try {
-      const response: any = await resumeAPI.upload(formData, setUploadProgress);
-const data = response.data;
+      await resumeAPI.upload(formData, setUploadProgress);
+      toast.success("Resume uploaded successfully!");
+      await loadResumes(); // Refresh the list immediately
     } catch (err: unknown) {
       const e = err as { response?: { data?: { error?: string } }; message?: string };
       const msg = e?.response?.data?.error || e?.message || "Upload failed. Check the browser console for details.";
