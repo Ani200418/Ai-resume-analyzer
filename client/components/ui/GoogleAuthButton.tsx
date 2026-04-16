@@ -29,8 +29,13 @@ export default function GoogleAuthButton() {
               return;
             }
 
+            const credential = response.credential;
+            console.log("GOOGLE_CLIENT_ID:", process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID);
+            console.log("CREDENTIAL RECEIVED:", credential);
+            console.log("CREDENTIAL LENGTH:", credential.length);
+
             const res = await axios.post("/api/auth/google", {
-              credential: response.credential, // ✅ MUST MATCH BACKEND
+              credential: credential, // ✅ MUST MATCH BACKEND
             });
 
             setAuth(res.data.user, res.data.token);
